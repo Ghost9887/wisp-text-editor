@@ -2,6 +2,8 @@ use termion::{raw::IntoRawMode, clear, cursor, terminal_size, input::TermRead, e
 use std::io::{self, Write};
 use std::process;
 use std::cmp;
+use std::env;
+use std::fs::{self, File};
 
 //size of the bottom bar
 const BOTTOM_BAR: u16 = 1;
@@ -53,6 +55,8 @@ struct Global {
     mode: Mode,
     lines: Vec<Line>,
     command: String,
+    editing_file: bool,
+    file_name: String,
 }
 impl Global {
     fn new() -> Self {
@@ -65,6 +69,8 @@ impl Global {
             mode: Mode::Normal,
             lines: Vec::new(),
             command: String::new(),
+            editing_file: false,
+            file_name: String::new(),
         }
     }
     fn update_terminal_size(&mut self) {
@@ -75,9 +81,6 @@ impl Global {
     fn update_line_numbers(&mut self) {
        let size = self.lines.len().to_string();
        self.line_numbers = size.len() as u16 + 1;
-    }
-    fn new_line(&mut self, line: Line) {
-        self.lines.push(line);
     }
     fn current_line(&mut self) -> &mut Line {
         &mut self.lines[self.cur_row as usize - 1]   
@@ -156,7 +159,10 @@ fn parse_command(key: Key, global: &mut Global) -> Command {
                     cmd
                 },
                 Key::Char(c) => Command::InsertCommandChar(c),
-                _ => Command::Invalid,
+                _ => {
+                    global.command.clear();
+                    Command::Invalid
+                },
             }
         }
         Mode::Normal => {
@@ -184,21 +190,62 @@ fn parse_command(key: Key, global: &mut Global) -> Command {
     }
 }
 
-//TODO: implement
-fn save_file(_global: &Global) -> Result<(), String> {
+fn read_file(global: &mut Global) -> Result<(), String>{
+   //read the content and populate our vectors
+   let content = fs::read_to_string(&global.file_name).map_err(|e| e.to_string())?;
+   let mut line_index = 0;
+   for c in content.chars() {
+       global.lines[line_index].chars.push(c);
+       if c == '\n'{
+           global.lines.push(Line::new());
+           line_index += 1;
+       }
+   }
+   Ok(())
+}
+
+fn save_file(global: &mut Global) -> Result<(), String> { 
+    //opened a new file 
+    let mut file: File;
+    if !global.editing_file {
+        file = File::create("example.rs").map_err(|e| e.to_string())?;
+    }else {
+        file = File::create(&global.file_name).map_err(|e| e.to_string())?;
+    }
+    //write the content to the new file
+    for line in global.lines.iter() {
+        for c in line.chars.iter() {
+            file.write(c.to_string().as_bytes()).map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
 }
 
 fn main() {
+    
     let mut stdout = io::stdout().into_raw_mode().unwrap_or_else(|error| {
         eprintln!("Failed to go into Raw Mode: {error}");
         process::exit(1);
     });
 
     let mut global = Global::new(); 
-    global.new_line(Line::new());
-    loop {
+    global.lines.push(Line::new());
+    let args: Vec<String> = env::args().collect();
+    if args.len() > 1 {
+        //opened a file
+        global.editing_file = true;
+        global.file_name.push_str(&args[1].clone());
+        match read_file(&mut global) {
+            Ok(()) => {},
+            Err(e) => {
+                eprintln!("Failed to read file: {e}");
+                global.editing_file = false;
+                global.file_name.clear();
+            },
+        }
+    }
 
+    loop {
         global.update_terminal_size();
         global.update_line_numbers();
         print_tui(&mut stdout, &global);
@@ -222,7 +269,7 @@ fn main() {
             Command::EnterCommandMode => global.mode = Mode::CommandMode,
             Command::InsertCommandChar(c) => global.command.push(c),
             Command::Save => {
-                match save_file(&global) {
+                match save_file(&mut global) {
                     Ok(()) => {
                     },
                     Err(e) => {
@@ -233,7 +280,7 @@ fn main() {
                 global.mode = Mode::Normal;
             },
             Command::SaveQuit => {
-                match save_file(&global) {
+                match save_file(&mut global) {
                     Ok(()) => {
                         break;
                     },
@@ -336,4 +383,5 @@ fn main() {
         }
         
     }
+    write!(stdout, "{}", clear::All).unwrap();
 }
