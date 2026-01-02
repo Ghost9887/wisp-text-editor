@@ -184,6 +184,7 @@ fn parse_command(key: Key, global: &mut Global) -> Command {
     }
 }
 
+//TODO: implement
 fn save_file(_global: &Global) -> Result<(), String> {
     Ok(())
 }
