@@ -108,8 +108,12 @@ fn print_tui(stdout: &mut io::Stdout, global: &Global) {
     stdout.flush().unwrap();
 }
 
+//TODO: add scrolling
 fn print_line_nubmers(stdout: &mut io::Stdout, global: &Global) {
-    let max = cmp::min(global.lines.len(), global.terminal_h as usize - BOTTOM_BAR as usize);
+    let max = cmp::min(
+    global.lines.len(), global.terminal_h as usize - BOTTOM_BAR as usize
+    );
+
     for i in 0..max {
         write!(stdout, "{}{}|", cursor::Goto(1, i as u16 + 1), i + 1).unwrap();  
     }
@@ -118,11 +122,7 @@ fn print_line_nubmers(stdout: &mut io::Stdout, global: &Global) {
 fn print_content(stdout: &mut io::Stdout, global: &Global) {
     for (i, line) in global.lines.iter().enumerate() {
         for (j, char) in line.chars.iter().enumerate() {
-            if *char == '\n'{
-                write!(stdout, "{}N", cursor::Goto(j as u16 + 1 + global.line_numbers, i as u16 + 1)).unwrap();
-            }else {
-                write!(stdout, "{}{char}", cursor::Goto(j as u16 + 1 + global.line_numbers, i as u16 + 1)).unwrap();
-            }
+            write!(stdout, "{}{char}", cursor::Goto(j as u16 + 1 + global.line_numbers, i as u16 + 1)).unwrap();
         }
     }
 }
@@ -205,18 +205,20 @@ fn read_file(global: &mut Global) -> Result<(), String>{
 }
 
 fn save_file(global: &mut Global) -> Result<(), String> { 
-    //opened a new file 
     let mut file: File;
     if !global.editing_file {
+        //creates
         file = File::create("example.rs").map_err(|e| e.to_string())?;
     }else {
+        //overwrites
         file = File::create(&global.file_name).map_err(|e| e.to_string())?;
     }
-    //write the content to the new file
     for line in global.lines.iter() {
         for c in line.chars.iter() {
             file.write(c.to_string().as_bytes()).map_err(|e| e.to_string())?;
         }
+        //manually wirte the '\n' character so we dont need to deal with it
+        file.write('\n'.to_string().as_bytes()).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -230,6 +232,7 @@ fn main() {
 
     let mut global = Global::new(); 
     global.lines.push(Line::new());
+
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
         //opened a file
@@ -289,7 +292,7 @@ fn main() {
                         global.command.push_str(&e);
                     },
                 }
-                global.mode =Mode::Normal;
+                global.mode = Mode::Normal;
             },
             Command::MoveUp => {
                 if global.cur_row > 1 {
@@ -337,11 +340,6 @@ fn main() {
             }
             //MIGHT NEED TO FIX LATER WE'LL SEE
             Command::NewLine => {
-                //write the \n char into the vec
-                let cur_col = global.cur_col;
-                global.current_line().chars.insert(cur_col as usize - 1, '\n');
-                global.cur_col += 1;
-
                 let cur_col = global.cur_col;
                 //at the end of the current line
                 if (cur_col as usize) >= global.current_line().chars.len() {
@@ -384,4 +382,5 @@ fn main() {
         
     }
     write!(stdout, "{}", clear::All).unwrap();
+    write!(stdout, "{}", cursor::Goto(1, 1)).unwrap();
 }
