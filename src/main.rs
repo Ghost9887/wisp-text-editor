@@ -94,9 +94,9 @@ fn print_tui(stdout: &mut io::Stdout, global: &Global) {
     write!(stdout, "{}",  clear::All).unwrap();
 
     if global.mode != Mode::CommandMode {
-        write!(stdout, "{}{}:{}", cursor::Goto(global.terminal_w - 5, global.terminal_h), 
+        write!(stdout, "{}{}:{}", cursor::Goto(global.terminal_w - 10, global.terminal_h), 
         global.cur_row, global.cur_col).unwrap();
-        write!(stdout, "{}{:?}", cursor::Goto(5, global.terminal_h), global.mode).unwrap();
+        write!(stdout, "{}{:?}", cursor::Goto(2, global.terminal_h), global.mode).unwrap();
     }else {
         print_command_content(stdout, global);
     }
@@ -104,7 +104,9 @@ fn print_tui(stdout: &mut io::Stdout, global: &Global) {
     print_line_nubmers(stdout, global);
     print_content(stdout, global);
 
+    //after printing everything we return the cursor to its position
     write!(stdout, "{}", cursor::Goto(global.cur_col + global.line_numbers, global.cur_row)).unwrap();
+
     stdout.flush().unwrap();
 }
 
@@ -196,11 +198,15 @@ fn read_file(global: &mut Global) -> Result<(), String>{
    let content = fs::read_to_string(&global.file_name).map_err(|e| e.to_string())?;
    let mut line_index = 0;
    for c in content.chars() {
-       global.lines[line_index].chars.push(c);
-       if c == '\n'{
-           global.lines.push(Line::new());
-           line_index += 1;
-       }
+       //instead of writing the '\n' characters we just create a new line
+       //we write the '\n' when we actually save the file 
+       //so other editors can also open it correctly
+      if c == '\n'{
+        global.lines.push(Line::new());
+        line_index += 1;
+      }else {
+        global.lines[line_index].chars.push(c);
+      }
    }
    Ok(())
 }
@@ -236,11 +242,11 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
-        //opened a file
+        //passed in a file
         global.editing_file = true;
         global.file_name.push_str(&args[1].clone());
         match read_file(&mut global) {
-            Ok(()) => {},
+            Ok(_) => {},
             Err(e) => {
                 eprintln!("Failed to read file: {e}");
                 global.editing_file = false;
@@ -274,18 +280,19 @@ fn main() {
             Command::InsertCommandChar(c) => global.command.push(c),
             Command::Save => {
                 match save_file(&mut global) {
-                    Ok(()) => {
+                    Ok(_) => {
+                        global.command.clear();
+                        global.command.push_str("successfully saved the file");
                     },
                     Err(e) => {
                         global.command.clear();
                         global.command.push_str(&e);
                     },
                 }
-                global.mode = Mode::Normal;
             },
             Command::SaveQuit => {
                 match save_file(&mut global) {
-                    Ok(()) => {
+                    Ok(_) => {
                         break;
                     },
                     Err(e) => {
@@ -293,11 +300,12 @@ fn main() {
                         global.command.push_str(&e);
                     },
                 }
-                global.mode = Mode::Normal;
             },
             Command::MoveUp => {
                 if global.cur_row > 1 {
                     global.cur_row -= 1;   
+
+                    //change the cursor column position
                     if global.current_line().chars.is_empty() {
                         global.cur_col = 1;
                     }
@@ -309,6 +317,8 @@ fn main() {
             Command::MoveDown => {
                 if (global.cur_row as usize) < global.lines.len() {
                     global.cur_row += 1;
+
+                    //change the cursor column position
                     if global.current_line().chars.is_empty() {
                         global.cur_col = 1;
                     }
@@ -339,11 +349,10 @@ fn main() {
                     global.cur_col += 1;
                 }
             }
-            //MIGHT NEED TO FIX LATER WE'LL SEE
             Command::NewLine => {
                 let cur_col = global.cur_col;
                 //at the end of the current line
-                if (cur_col as usize) >= global.current_line().chars.len() {
+                if (cur_col as usize) > global.current_line().chars.len() {
                     let cur_row = global.cur_row;
                     global.lines.insert(cur_row as usize, Line::new());
                     global.cur_row += 1;
@@ -370,6 +379,16 @@ fn main() {
                     global.cur_col -= 1;
                     let cur_col = global.cur_col;
                     global.current_line().chars.remove(cur_col as usize - 1);
+                }else {
+                    //delete the entire row and move rest of the content up
+                    if global.cur_row > 1 {
+                        let mut old_line: Vec<char> = global.current_line().chars.clone();
+                        global.cur_row -= 1;
+                        let old_size = global.current_line().chars.len() as u16 + 1;
+                        global.current_line().chars.append(&mut old_line);
+                        global.lines.remove(global.cur_row as usize);
+                        global.cur_col = old_size;
+                    }
                 }
             },
             Command::DeleteCharX => {
@@ -378,10 +397,11 @@ fn main() {
                     global.current_line().chars.remove(cur_col as usize - 1);
                 }
             },
-            Command::Invalid => {},
+            Command::Invalid => continue,
         }
         
     }
+    //clear the screen and reset the cursor when quitting
     write!(stdout, "{}", clear::All).unwrap();
     write!(stdout, "{}", cursor::Goto(1, 1)).unwrap();
 }
