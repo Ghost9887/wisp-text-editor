@@ -120,6 +120,7 @@ fn print_line_nubmers(stdout: &mut io::Stdout, global: &Global) {
 }
 
 fn print_content(stdout: &mut io::Stdout, global: &Global) {
+    //TODO: make it so we only print what should be on the screen
     for (i, line) in global.lines.iter().enumerate() {
         for (j, char) in line.chars.iter().enumerate() {
             write!(stdout, "{}{char}", cursor::Goto(j as u16 + 1 + global.line_numbers, i as u16 + 1)).unwrap();
